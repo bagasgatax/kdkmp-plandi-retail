@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KDKMP PLANDI - Kasir</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#f1f5f9;
+  color:#1e293b
+}
+header{
+  background:#166534;
+  color:white;
+  padding:20px;
+  text-align:center
+}
+header h1{margin:0;font-size:24px}
+header p{margin:8px 0 0}
+main{max-width:1000px;margin:auto;padding:16px}
+.card{
+  background:white;
+  padding:18px;
+  margin-bottom:16px;
+  border-radius:14px;
+  box-shadow:0 2px 8px #00000010
+}
+input,button{
+  width:100%;
+  padding:12px;
+  margin:5px 0;
+  border-radius:8px;
+  font-size:15px
+}
+input{border:1px solid #cbd5e1}
+button{
+  border:0;
+  background:#15803d;
+  color:white;
+  cursor:pointer
+}
+button.secondary{background:#475569}
+.product{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:12px 0;
+  border-bottom:1px solid #e2e8f0
+}
+.product button{width:auto;min-width:90px}
+.price{color:#15803d;font-weight:bold}
+.total{font-size:22px;font-weight:bold}
+small{color:#64748b}
+</style>
+</head>
+
+<body>
+<header>
+  <h1>KDKMP PLANDI</h1>
+  <p>Aplikasi Kasir & Stok Barang</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>🔎 Cari Produk</h2>
+    <input id="search" placeholder="Ketik nama produk..."
+      oninput="renderProducts()">
+    <div id="products"></div>
+  </section>
+
+  <section class="card">
+    <h2>🛒 Keranjang Belanja</h2>
+    <div id="cart"></div>
+    <p class="total">Total: <span id="total">Rp0</span></p>
+    <button onclick="checkout()">Simpan Transaksi</button>
+    <button class="secondary" onclick="clearCart()">Kosongkan Keranjang</button>
+    <small>Versi awal: transaksi masih tersimpan di browser ini.</small>
+  </section>
+
+  <section class="card">
+    <h2>📦 Riwayat Transaksi</h2>
+    <div id="history"></div>
+  </section>
+</main>
+
+<script>
+const initialProducts = [
+  {id:"minyak_fortune_1l",name:"Minyak Fortune 1L",price:20750,stock:100}
+];
+
+let products = JSON.parse(
+  localStorage.getItem("kdkmp_products") || "null"
+) || initialProducts;
+
+let cart = [];
+let history = JSON.parse(
+  localStorage.getItem("kdkmp_history") || "[]"
+);
+
+const rupiah = n => new Intl.NumberFormat("id-ID",{
+  style:"currency",currency:"IDR",maximumFractionDigits:0
+}).format(n);
+
+function saveData(){
+  localStorage.setItem("kdkmp_products",JSON.stringify(products));
+  localStorage.setItem("kdkmp_history",JSON.stringify(history));
+}
+
+function renderProducts(){
+  const q=document.getElementById("search").value.toLowerCase();
+  const filtered=products.filter(p=>p.name.toLowerCase().includes(q));
+
+  document.getElementById("products").innerHTML=filtered.map(p=>`
+    <div class="product">
+      <div>
+        <b>${escapeHTML(p.name)}</b><br>
+        <span class="price">${rupiah(p.price)}</span><br>
+        <small>Stok: ${p.stock}</small>
+      </div>
+      <button onclick="addToCart('${p.id}')" ${p.stock<=0?"disabled":""}>
+        + Tambah
+      </button>
+    </div>
+  `).join("") || "<p>Produk tidak ditemukan.</p>";
+}
+
+function escapeHTML(s){
+  return String(s).replace(/[&<>"']/g,c=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+function addToCart(id){
+  const p=products.find(x=>x.id===id);
+  if(!p || p.stock<=0)return alert("Stok habis.");
+
+  const item=cart.find(x=>x.id===id);
+  if(item){
+    if(item.qty>=p.stock)return alert("Jumlah melebihi stok.");
+    item.qty++;
+  }else{
+    cart.push({id:p.id,name:p.name,price:p.price,qty:1});
+  }
+  renderCart();
+}
+
+function renderCart(){
+  document.getElementById("cart").innerHTML=cart.map((x,i)=>`
+    <div class="product">
+      <div>${escapeHTML(x.name)}<br>
+      ${rupiah(x.price)} × ${x.qty}</div>
+      <button class="secondary" onclick="removeItem(${i})">Hapus</button>
+    </div>
+  `).join("") || "<p>Keranjang masih kosong.</p>";
+
+  document.getElementById("total").textContent=
+    rupiah(cart.reduce((s,x)=>s+x.price*x.qty,0));
+}
+
+function removeItem(i){
+  cart.splice(i,1);
+  renderCart();
+}
+
+function clearCart(){
+  cart=[];
+  renderCart();
+}
+
+function checkout(){
+  if(!cart.length)return alert("Keranjang masih kosong.");
+
+  for(const item of cart){
+    const p=products.find(x=>x.id===item.id);
+    if(!p || p.stock<item.qty){
+      return alert("Stok tidak mencukupi. Periksa kembali barang.");
+    }
+  }
+
+  const total=cart.reduce((s,x)=>s+x.price*x.qty,0);
+
+  cart.forEach(item=>{
+    products.find(p=>p.id===item.id).stock-=item.qty;
+  });
+
+  history.unshift({
+    date:new Date().toLocaleString("id-ID"),
+    items:cart.map(x=>({...x})),
+    total
+  });
+
+  saveData();
+  cart=[];
+  renderProducts();
+  renderCart();
+  renderHistory();
+  alert("Transaksi tersimpan di browser ini.");
+}
+
+function renderHistory(){
+  document.getElementById("history").innerHTML=history.map(x=>`
+    <div class="product">
+      <div><b>${escapeHTML(x.date)}</b><br>
+      <small>${x.items.map(i=>escapeHTML(i.name)+" × "+i.qty).join(", ")}</small></div>
+      <b>${rupiah(x.total)}</b>
+    </div>
+  `).join("") || "<p>Belum ada transaksi.</p>";
+}
+
+renderProducts();
+renderCart();
+renderHistory();
+</script>
+</body>
+</html>
